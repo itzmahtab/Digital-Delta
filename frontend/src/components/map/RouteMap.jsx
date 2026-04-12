@@ -64,15 +64,35 @@ export default function RouteMap() {
         const isFlooded = failedEdges.includes(edge.id);
         const color = isFlooded ? '#C0392B' : getRouteColor(edge.id);
         
+        // Mode-specific styling
+        const dashArray = isFlooded 
+          ? '15, 10' 
+          : edge.mode === 'water' ? '5, 10' 
+          : edge.mode === 'air' ? '1, 15' 
+          : null;
+        
+        const weight = isFlooded ? 5 : (edge.mode === 'air' ? 2 : 4);
+        const opacity = isFlooded ? 0.6 : (edge.mode === 'air' ? 0.4 : 0.8);
+
         return (
           <Polyline
             key={edge.id}
             positions={getPolylinePositions(edge.source, edge.target)}
             color={color}
-            weight={isFlooded ? 5 : 4}
-            opacity={isFlooded ? 0.6 : 0.8}
-            dashArray={isFlooded ? '15, 10' : null}
-          />
+            weight={weight}
+            opacity={opacity}
+            dashArray={dashArray}
+          >
+            <Popup>
+              <div className="text-xs p-1">
+                <p className="font-bold text-slate-900 mb-1">{edge.id} ({edge.mode || 'land'})</p>
+                <div className="space-y-1 text-slate-600">
+                  <p className="flex justify-between gap-4 font-medium italic">Weight: <span>{edge.base_weight_mins}m</span></p>
+                  <p className="flex justify-between gap-4 font-medium italic">Risk: <span>{(edge.risk_score * 100).toFixed(1)}%</span></p>
+                </div>
+              </div>
+            </Popup>
+          </Polyline>
         );
       })}
 

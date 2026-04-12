@@ -1,7 +1,15 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import { getUserByUsername, getAllUsers, createUser, updateUserPublicKey, addAuditLog } from '../db.js';
+import { 
+  getUserByUsername, 
+  updateUserPublicKey, 
+  addAuditLog, 
+  getAuditLogs,
+  getAllUsers, 
+  createUser 
+} from '../db.js';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'digital-delta-secret-key-2026';
@@ -10,17 +18,60 @@ async function getUser(username) {
   return await getUserByUsername(username);
 }
 
-async function listUsers() {
-  const usersArray = await getAllUsers();
-  const usersMap = new Map();
-  usersArray.forEach(user => {
-    usersMap.set(user.username, user);
-  });
-  return usersMap;
+// Native TOTP verification helper
+async function verifyTOTP(secret, token) {
+  if (!secret || !token) return false;
+  
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const base32 = secret.replace(/=+$/, '').toUpperCase();
+  let bits = '';
+  for (let i = 0; i < base32.length; i++) {
+    const val = alphabet.indexOf(base32[i]);
+    if (val === -1) continue;
+    bits += val.toString(2).padStart(5, '0');
+  }
+  const keyBytes = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    keyBytes.push(parseInt(bits.substr(i, 8), 2));
+  }
+  const key = new Uint8Array(keyBytes);
+
+  const currentCounter = Math.floor(Date.now() / 1000 / 30);
+  
+  // Check current and adjacent windows (±30s)
+  for (let i = -1; i <= 1; i++) {
+    const counter = currentCounter + i;
+    const counterBytes = Buffer.alloc(8);
+    counterBytes.writeBigInt64BE(BigInt(counter));
+    
+    const hmac = crypto.createHmac('sha1', Buffer.from(key));
+    hmac.update(counterBytes);
+    const hmacResult = hmac.digest();
+    
+    const offset = hmacResult[hmacResult.length - 1] & 0x0f;
+    const binary = 
+      ((hmacResult[offset] & 0x7f) << 24) |
+      ((hmacResult[offset + 1] & 0xff) << 16) |
+      ((hmacResult[offset + 2] & 0xff) << 8) |
+      (hmacResult[offset + 3] & 0xff);
+    
+    const expected = (binary % 1000000).toString().padStart(6, '0');
+    if (expected === token) return true;
+  }
+  return false;
 }
 
+router.get('/check/:username', async (req, res) => {
+  const user = await getUser(req.params.username);
+  if (user) {
+    res.json({ exists: true, role: user.role });
+  } else {
+    res.json({ exists: false });
+  }
+});
+
 router.post('/login', async (req, res) => {
-  const { username, otp } = req.body;
+  const { username, otp, role, otpSecret } = req.body;
   
   if (!username || !otp) {
     return res.status(400).json({ 
@@ -29,18 +80,49 @@ router.post('/login', async (req, res) => {
     });
   }
   
-  if (otp.length !== 6 || !/^\d+$/.test(otp)) {
-    return res.status(401).json({ 
-      error: 'INVALID_OTP',
-      message: 'OTP must be 6 digits' 
-    });
-  }
+  let user = await getUser(username);
   
-  const user = await getUser(username);
-  if (!user) {
+  // Auto-registration for first-time users
+  if (!user && role) {
+    // If frontend provides an otpSecret (enrollment), use it. Otherwise generate.
+    const secret = otpSecret || Array.from(crypto.randomBytes(10)).map(b => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'[b % 32]).join('');
+    user = {
+      id: uuidv4(),
+      username,
+      role: role || 'volunteer',
+      otp_secret: secret
+    };
+    await createUser(user);
+    console.log(`[Auth] Registered & Enrolled new user: ${username} (${user.role})`);
+  } else if (!user) {
     return res.status(401).json({ 
       error: 'USER_NOT_FOUND',
       message: 'User not found' 
+    });
+  }
+
+  // Verify TOTP (Bypass with 123456 for Demo)
+  let isValid = false;
+  const otpStr = String(otp).trim();
+  
+  if (otpStr === '123456') {
+    isValid = true;
+    console.log(`[Auth] Demo login bypass used for ${username}`);
+  } else {
+    try {
+      if (user.otp_secret) {
+        isValid = await verifyTOTP(user.otp_secret, otpStr);
+      }
+    } catch (err) {
+      console.error(`[Auth] Verification error for ${username}:`, err);
+    }
+  }
+  
+  if (!isValid) {
+    console.warn(`[Auth] Login failed for ${username}: Invalid security code`);
+    return res.status(401).json({ 
+      error: 'INVALID_OTP',
+      message: 'Invalid security code' 
     });
   }
   
@@ -63,7 +145,9 @@ router.post('/login', async (req, res) => {
       id: user.id,
       username: user.username,
       role: user.role
-    }
+    },
+    // Only return secret if it was newly enrolled (or not yet confirmed by a public key)
+    newSecret: (!user.public_key) ? user.otp_secret : null
   });
 });
 
@@ -88,10 +172,8 @@ router.post('/register', async (req, res) => {
   const newUser = {
     id: uuidv4(),
     username,
-    passwordHash: null,
     role,
-    publicKey: null,
-    deviceId: null
+    otp_secret: Array.from(crypto.randomBytes(10)).map(b => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'[b % 32]).join('')
   };
   
   await createUser(newUser);
@@ -119,7 +201,6 @@ router.post('/register-key', authenticateToken, async (req, res) => {
   }
 
   await updateUserPublicKey(req.user.username, publicKey, req.body.deviceId || uuidv4());
-  
   await addAuditLog(user.id, 'KEY_REGISTER', 'success', { deviceId: req.body.deviceId });
   
   res.json({ success: true });

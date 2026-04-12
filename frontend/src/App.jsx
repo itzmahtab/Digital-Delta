@@ -9,6 +9,7 @@ import SyncPage from './pages/SyncPage';
 import FleetPage from './pages/FleetPage';
 import AuditPage from './pages/AuditPage';
 import InventoryPage from './pages/InventoryPage';
+import MeshPage from './pages/MeshPage';
 import RoleGuard from './components/auth/RoleGuard';
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, isAuthenticated } = useAuthStore();
@@ -83,6 +84,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={['manager', 'commander', 'admin']}>
               <InventoryPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="mesh"
+          element={
+            <ProtectedRoute allowedRoles={['commander', 'admin']}>
+              <MeshPage />
             </ProtectedRoute>
           }
         />

@@ -1,152 +1,216 @@
+import { useState, useEffect } from 'react';
+import { RefreshCw, Database, Clock, CheckCircle2, AlertTriangle, Activity, Server, Smartphone, Loader2, GitMerge, Cloud, CloudOff } from 'lucide-react';
 import { useSyncStore } from '../store/syncStore';
 import { useNetworkStore } from '../store/networkStore';
-import { RefreshCw, Cloud, CloudOff, AlertTriangle, CheckCircle, Clock, Database, GitMerge } from 'lucide-react';
+import ConflictModal from '../components/sync/ConflictModal';
 
 export default function SyncPage() {
-  const { vectorClock, localMutations, pendingConflicts, syncStatus, lastSyncTime, sync, isSyncing } = useSyncStore();
+  const { 
+    sync, 
+    syncStatus, 
+    isSyncing, 
+    lastSyncTime, 
+    vectorClock, 
+    localMutations, 
+    pendingConflicts,
+    resolveConflict
+  } = useSyncStore();
+  
   const { isOnline } = useNetworkStore();
+  const [activeConflict, setActiveConflict] = useState(null);
 
-  const getStatusConfig = () => {
-    switch (syncStatus) {
-      case 'synced':
-        return { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-100', label: 'Synced' };
-      case 'conflict':
-        return { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-100', label: 'Conflicts Detected' };
-      case 'syncing':
-        return { icon: RefreshCw, color: 'text-blue-500', bg: 'bg-blue-100', label: 'Syncing...' };
-      case 'error':
-        return { icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-100', label: 'Sync Error' };
-      default:
-        return isOnline 
-          ? { icon: Cloud, color: 'text-slate-400', bg: 'bg-slate-100', label: 'Ready to Sync' }
-          : { icon: CloudOff, color: 'text-slate-400', bg: 'bg-slate-100', label: 'Offline' };
+  const handleResolve = async (resolution) => {
+    if (activeConflict) {
+      await resolveConflict(activeConflict.id, resolution);
+      setActiveConflict(null);
     }
   };
 
-  const statusConfig = getStatusConfig();
-  const StatusIcon = statusConfig.icon;
-
   return (
     <div className="p-6 max-w-5xl mx-auto animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">CRDT Sync</h1>
-        <p className="text-slate-600 mt-1">Distributed synchronization and conflict resolution</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Sync Center</h1>
+          <p className="text-slate-600 mt-1">Distributed CRDT Ledger & Mesh Sync</p>
+        </div>
+        <button
+          onClick={() => sync()}
+          disabled={!isOnline || isSyncing}
+          className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all shadow-lg ${
+            isSyncing 
+              ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+              : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95 shadow-blue-600/20 shadow-lg'
+          } ${!isOnline && !isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          {isSyncing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+          {isSyncing ? 'Syncing...' : 'Sync Now'}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-slate-900">Connection Status</h3>
-            <div className={`p-2 rounded-xl ${statusConfig.bg}`}>
-              <StatusIcon className={`w-5 h-5 ${statusConfig.color} ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-blue-100 rounded-xl text-blue-600">
+              <Database className="w-5 h-5" />
             </div>
+            <h3 className="font-bold text-slate-900">Local Ledger</h3>
           </div>
-          <div className={`px-4 py-3 rounded-xl ${statusConfig.bg} mb-4`}>
-            <p className={`font-medium ${statusConfig.color}`}>{statusConfig.label}</p>
-          </div>
-          <button
-            onClick={() => sync()}
-            disabled={!isOnline || isSyncing}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/25"
-          >
-            <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
-            Sync Now
-          </button>
+          <p className="text-3xl font-bold text-slate-900">{localMutations.length}</p>
+          <p className="text-sm text-slate-500 mt-1">Pending Mutations</p>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-            <Database className="w-5 h-5 text-purple-500" />
-            Vector Clock
-          </h3>
-          <div className="font-mono text-sm bg-slate-900 text-green-400 p-4 rounded-xl overflow-x-auto">
-            <pre className="whitespace-pre-wrap">
-              {JSON.stringify(vectorClock, null, 2)}
-            </pre>
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-purple-100 rounded-xl text-purple-600">
+              <Clock className="w-5 h-5" />
+            </div>
+            <h3 className="font-bold text-slate-900">Last Sync</h3>
           </div>
+          <p className="text-3xl font-bold text-slate-900">
+            {lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
+          </p>
+          <p className="text-sm text-slate-500 mt-1">Cloud/Mesh Update</p>
         </div>
-      </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-        <div className="p-4 border-b border-slate-200 bg-slate-50">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Pending Mutations</h2>
-              <p className="text-sm text-slate-500">{localMutations.length} local change(s) waiting to sync</p>
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200">
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`p-2 rounded-xl ${syncStatus === 'synced' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
+              <CheckCircle2 className="w-5 h-5" />
             </div>
-            <GitMerge className="w-5 h-5 text-slate-400" />
+            <h3 className="font-bold text-slate-900">Status</h3>
           </div>
-        </div>
-        <div className="divide-y divide-slate-200 max-h-80 overflow-y-auto">
-          {localMutations.length === 0 ? (
-            <div className="p-12 text-center">
-              <div className="p-4 bg-slate-100 rounded-full inline-flex mb-4">
-                <Cloud className="w-8 h-8 text-slate-400" />
-              </div>
-              <p className="text-slate-500">No pending mutations</p>
-              <p className="text-sm text-slate-400 mt-1">All changes are synced</p>
-            </div>
-          ) : (
-            localMutations.map((mutation, index) => (
-              <div key={mutation.id || index} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <GitMerge className="w-4 h-4 text-blue-600" />
-                    </div>
-                    <div>
-                      <span className="font-semibold text-slate-900">{mutation.type || 'update'}</span>
-                      <p className="text-sm text-slate-500 font-mono truncate max-w-xs">
-                        {mutation.record_id || mutation.id}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs text-slate-400">
-                    {mutation.timestamp ? new Date(mutation.timestamp).toLocaleTimeString() : 'Unknown'}
-                  </span>
-                </div>
-              </div>
-            ))
-          )}
+          <p className={`text-3xl font-bold capitalize ${syncStatus === 'synced' ? 'text-green-600' : 'text-amber-600'}`}>
+            {syncStatus}
+          </p>
+          <p className="text-sm text-slate-500 mt-1">
+            {isOnline ? (
+              <span className="flex items-center gap-1"><Cloud className="w-3 h-3" /> Online</span>
+            ) : (
+              <span className="flex items-center gap-1 text-slate-400"><CloudOff className="w-3 h-3" /> Offline</span>
+            )}
+          </p>
         </div>
       </div>
 
       {pendingConflicts.length > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
-          <div className="flex items-center gap-3 text-yellow-800 mb-4">
-            <div className="p-2 bg-yellow-100 rounded-xl">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <h3 className="font-semibold text-lg">Conflicts Detected</h3>
+        <div className="mb-8 bg-amber-50 border border-amber-200 rounded-3xl p-6 animate-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-3 text-amber-800 mb-6">
+            <AlertTriangle className="w-6 h-6" />
+            <h2 className="text-xl font-bold">Manual Resolution Required</h2>
           </div>
-          <div className="space-y-3">
-            {pendingConflicts.map((conflict, index) => (
-              <div key={conflict.id || index} className="bg-white rounded-xl p-4 border border-yellow-200">
-                <p className="font-semibold text-slate-900 mb-3">
-                  Record: <span className="font-mono">{conflict.record_id || 'Unknown'}</span>
-                </p>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <p className="text-xs text-blue-600 font-medium mb-1">Local Value</p>
-                    <p className="font-mono truncate">{conflict.localValue}</p>
-                  </div>
-                  <div className="p-3 bg-purple-50 rounded-lg">
-                    <p className="text-xs text-purple-600 font-medium mb-1">Remote Value</p>
-                    <p className="font-mono truncate">{conflict.remoteValue}</p>
-                  </div>
+          <div className="grid gap-3">
+            {pendingConflicts.map(conflict => (
+              <div key={conflict.id} className="bg-white border border-amber-100 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                  <p className="font-bold text-slate-900">{conflict.type}: {conflict.recordId}</p>
+                  <p className="text-xs text-slate-500 font-mono mt-1">ID: {conflict.id}</p>
                 </div>
+                <button
+                  onClick={() => setActiveConflict(conflict)}
+                  className="px-4 py-2 bg-amber-100 text-amber-700 rounded-xl text-sm font-bold hover:bg-amber-200 transition-colors"
+                >
+                  Resolve Conflict
+                </button>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {lastSyncTime && (
-        <div className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-500">
-          <Clock className="w-4 h-4" />
-          <span>Last synced: {new Date(lastSyncTime).toLocaleString()}</span>
+      <div className="bg-slate-900 rounded-[2rem] p-8 text-white shadow-2xl relative overflow-hidden">
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-8">
+            <Activity className="w-8 h-8 text-blue-400" />
+            <h2 className="text-2xl font-bold">Vector Clock Visualization</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center border border-blue-500/30">
+                  <Smartphone className="w-6 h-6 text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-end mb-2">
+                    <span className="text-sm font-bold text-blue-400 uppercase tracking-widest">Local Device</span>
+                    <span className="bg-blue-500/20 px-3 py-1 rounded-lg text-xs font-mono text-blue-300 border border-blue-500/10">
+                      VC_{Object.values(vectorClock).reduce((a, b) => a + b, 0)}
+                    </span>
+                  </div>
+                  <div className="h-4 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div 
+                      className="h-full bg-blue-500 transition-all duration-1000"
+                      style={{ width: `${Math.min(100, localMutations.length * 10)}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-center -my-2 relative h-12">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-0.5 h-full bg-gradient-to-b from-blue-500 to-emerald-500 opacity-20"></div>
+                </div>
+                <div className={`p-2 rounded-full border-2 transition-all duration-500 z-10 ${
+                  isSyncing ? 'bg-white border-blue-500 rotate-180' : 'bg-slate-800 border-slate-700'
+                }`}>
+                  <RefreshCw className={`w-4 h-4 text-blue-400 ${isSyncing ? 'animate-spin' : ''}`} />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center border border-emerald-500/30">
+                  <Server className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-end mb-2">
+                    <span className="text-sm font-bold text-emerald-400 uppercase tracking-widest">Global Mesh</span>
+                    <span className="bg-emerald-500/20 px-3 py-1 rounded-lg text-xs font-mono text-emerald-300 border border-emerald-500/10">
+                      VC_Cloud
+                    </span>
+                  </div>
+                  <div className="h-4 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                    <div 
+                      className="h-full bg-emerald-500 transition-all duration-1000"
+                      style={{ width: lastSyncTime ? '100%' : '0%' }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-800/50 rounded-3xl p-6 border border-slate-700 backdrop-blur-sm">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                <Database className="w-5 h-5 text-blue-400" />
+                State Snapshot
+              </h3>
+              <div className="font-mono text-xs text-blue-100/70 space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-2">
+                {Object.entries(vectorClock).length > 0 ? (
+                  Object.entries(vectorClock).map(([nodeId, clock]) => (
+                    <div key={nodeId} className="flex justify-between p-2 bg-white/5 rounded-xl">
+                      <span>{nodeId.substring(0, 12)}...</span>
+                      <span className="text-blue-400 font-bold">{clock}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-10 opacity-40">No cluster state found</div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
+
+        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 blur-[100px] -mr-32 -mt-32 rounded-full"></div>
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/10 blur-[100px] -ml-32 -mb-32 rounded-full"></div>
+      </div>
+
+      {activeConflict && (
+        <ConflictModal 
+          conflict={activeConflict}
+          onResolve={handleResolve}
+          onClose={() => setActiveConflict(null)}
+        />
       )}
     </div>
   );
 }
+

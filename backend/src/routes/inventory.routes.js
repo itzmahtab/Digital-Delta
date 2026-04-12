@@ -1,46 +1,33 @@
 import { Router } from 'express';
+import { getInventory, updateInventoryItem } from '../db.js';
 
 const router = Router();
 
-const inventory = [
-  { id: 'INV001', name: 'Medical Kits', category: 'medical', quantity: 150, unit: 'boxes', min_stock: 50, updated_at: Date.now() },
-  { id: 'INV002', name: 'Water Containers', category: 'water', quantity: 320, unit: 'units', min_stock: 100, updated_at: Date.now() },
-  { id: 'INV003', name: 'Food Packages', category: 'food', quantity: 45, unit: 'boxes', min_stock: 100, updated_at: Date.now() },
-  { id: 'INV004', name: 'Blankets', category: 'shelter', quantity: 200, unit: 'units', min_stock: 80, updated_at: Date.now() },
-  { id: 'INV005', name: 'Fuel Canisters', category: 'fuel', quantity: 30, unit: 'units', min_stock: 20, updated_at: Date.now() },
-  { id: 'INV006', name: 'First Aid Supplies', category: 'medical', quantity: 85, unit: 'kits', min_stock: 40, updated_at: Date.now() },
-];
-
-router.get('/', (req, res) => {
-  const { category } = req.query;
-  
-  let filtered = [...inventory];
-  
-  if (category) {
-    filtered = filtered.filter(i => i.category === category);
+router.get('/', async (req, res) => {
+  try {
+    const { category } = req.query;
+    const items = await getInventory(category);
+    res.json({ success: true, inventory: items });
+  } catch (err) {
+    res.status(500).json({ error: 'DB_ERROR', message: err.message });
   }
-  
-  res.json({ success: true, inventory: filtered });
 });
 
-router.patch('/:id', (req, res) => {
-  const { id } = req.params;
-  const { quantity } = req.body;
-  
-  const item = inventory.find(i => i.id === id);
-  if (!item) {
-    return res.status(404).json({ 
-      error: 'NOT_FOUND',
-      message: 'Inventory item not found' 
-    });
+router.patch('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { quantity } = req.body;
+    
+    if (quantity === undefined) {
+      return res.status(400).json({ error: 'INVALID_REQUEST', message: 'quantity is required' });
+    }
+
+    await updateInventoryItem(id, quantity);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'DB_ERROR', message: err.message });
   }
-  
-  if (quantity !== undefined) {
-    item.quantity = quantity;
-    item.updated_at = Date.now();
-  }
-  
-  res.json({ success: true, item });
 });
 
 export default router;
+

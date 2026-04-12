@@ -15,7 +15,7 @@ const ROLES = [
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, isLoading, error, clearError } = useAuthStore();
+  const { login, checkUser, isLoading, error, clearError } = useAuthStore();
   
   const [step, setStep] = useState(1);
   const [username, setUsername] = useState('');
@@ -48,9 +48,18 @@ export default function LoginPage() {
     return () => clearInterval(interval);
   }, [step, timeRemaining]);
 
-  const handleUsernameSubmit = () => {
+  const handleUsernameSubmit = async () => {
     if (username.trim()) {
-      setStep(2);
+      setIsGenerating(true);
+      const res = await checkUser(username);
+      setIsGenerating(false);
+      
+      if (res.exists) {
+        setSelectedRole(res.role);
+        setStep(3);
+      } else {
+        setStep(2);
+      }
     }
   };
 
@@ -94,8 +103,18 @@ export default function LoginPage() {
       return;
     }
     
-    const result = await login(username, otp);
+    let currentSecret = null;
+    if (step === 3) {
+      // Get the secret that was just generated/loaded for this session
+      const res = await otpService.generateTOTP(username);
+      currentSecret = res.secret;
+    }
+
+    const result = await login(username, otp, selectedRole, currentSecret);
     if (result.success) {
+      if (result.newSecret) {
+        await otpService.storeSecret(username, result.newSecret);
+      }
       navigate('/dashboard');
     }
   };
@@ -210,13 +229,14 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="space-y-5 animate-fade-in">
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-2">
-                  One-Time Password
+                  One-Time Password <span className="text-blue-400/60 ml-1">(For demo, use 123456)</span>
                 </label>
                 
+                {/* OTP generation and display hidden for demo mode
                 {generatedCode && showCode && (
                   <div className="mb-4 p-4 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-xl">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-green-400">Generated Code (Demo Mode)</span>
+                      <span className="text-xs text-green-400">Security Token</span>
                       <button
                         type="button"
                         onClick={() => setShowCode(false)}
@@ -240,16 +260,15 @@ export default function LoginPage() {
                         <Check className="w-4 h-4 text-green-400" />
                       </button>
                     </div>
-                    <p className="text-xs text-slate-500 mt-2">
-                      Click the checkmark or copy to auto-fill
-                    </p>
                   </div>
                 )}
+                */}
 
                 <div className="bg-slate-700/30 rounded-xl p-4">
                   <OTPInput value={otp} onChange={setOtp} />
                 </div>
                 
+                {/* Timer and "New Code" button hidden for demo mode
                 <div className="mt-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Lock className="w-4 h-4 text-slate-500" />
@@ -286,12 +305,9 @@ export default function LoginPage() {
                     )}
                   </button>
                 </div>
-                
-                <div className="mt-3 flex items-start gap-2 text-xs text-slate-500">
-                  <Lock className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                  <span>Demo mode: Click the checkmark above to auto-fill, or enter any 6 digits</span>
-                </div>
+                */}
               </div>
+
 
               <div className="flex gap-3">
                 <button

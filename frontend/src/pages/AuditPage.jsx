@@ -1,20 +1,26 @@
-import { useState } from 'react';
-import { FileText, Shield, CheckCircle, AlertTriangle, Search, Activity, Clock } from 'lucide-react';
-
-const mockAuditLogs = [
-  { id: 1, user: 'admin', action: 'LOGIN', timestamp: Date.now() - 100000, status: 'success', hash: 'a1b2c3d4e5f6...' },
-  { id: 2, user: 'volunteer1', action: 'DELIVERY_CREATE', timestamp: Date.now() - 90000, status: 'success', hash: 'd4e5f6g7h8i9...' },
-  { id: 3, user: 'drone_op1', action: 'ROUTE_UPDATE', timestamp: Date.now() - 80000, status: 'success', hash: 'g7h8i9j0k1l2...' },
-  { id: 4, user: 'system', action: 'CRDT_SYNC', timestamp: Date.now() - 70000, status: 'success', hash: 'j1k2l3m4n5o6...' },
-  { id: 5, user: 'volunteer2', action: 'POD_VERIFY', timestamp: Date.now() - 60000, status: 'success', hash: 'm4n5o6p7q8r9...' },
-  { id: 6, user: 'manager1', action: 'INVENTORY_UPDATE', timestamp: Date.now() - 50000, status: 'success', hash: 'p7q8r9s0t1u2...' },
-  { id: 7, user: 'commander1', action: 'FLEET_DISPATCH', timestamp: Date.now() - 40000, status: 'success', hash: 's0t1u2v3w4x5...' },
-];
+import { useEffect, useState } from 'react';
+import { FileText, Shield, CheckCircle, AlertTriangle, Search, Activity, Clock, Loader2 } from 'lucide-react';
+import api from '../services/api';
 
 export default function AuditPage() {
-  const [logs] = useState(mockAuditLogs);
+  const [logs, setLogs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [chainValid, setChainValid] = useState(true);
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const response = await api.get('/api/auth/audit/logs');
+        setLogs(response.data.logs);
+      } catch (err) {
+        console.error('Failed to fetch audit logs:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchLogs();
+  }, []);
 
   const filteredLogs = logs.filter(log =>
     log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||

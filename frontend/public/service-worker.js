@@ -31,20 +31,38 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+  
+  // Skip service worker for API calls in development - let browser handle directly
+  if (url.pathname.startsWith('/api') && url.origin === 'http://localhost:3001') {
+    event.respondWith(fetch(request));
+    return;
+  }
+  
   // API calls: network-first with 3s timeout, then cache
   if (url.pathname.startsWith('/api')) {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
+      new Promise((resolve, reject) => {
+        fetch(request)
+          .then((response) => {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseClone);
+            });
+            resolve(response);
+          })
+          .catch(() => {
+            caches.match(request).then((cached) => {
+              if (cached) {
+                resolve(cached);
+              } else {
+                resolve(new Response(JSON.stringify({ error: 'OFFLINE', message: 'No network and no cached response' }), {
+                  status: 503,
+                  headers: { 'Content-Type': 'application/json' }
+                }));
+              }
+            });
           });
-          return response;
-        })
-        .catch(() => {
-          return caches.match(request);
-        })
+      })
     );
     return;
   }
@@ -65,7 +83,13 @@ self.addEventListener('fetch', (event) => {
   // Static assets: cache-first
   event.respondWith(
     caches.match(request).then((cached) => {
-      return cached || fetch(request);
+      return cached || fetch(request).catch(() => {
+        // If it's a page navigation request, always serve the cached index.html
+        if (request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+        return new Response('Network error. Offline.', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+      });
     })
   );
 });

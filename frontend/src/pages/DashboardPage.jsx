@@ -1,16 +1,45 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useAuthStore } from '../store/authStore';
 import { useRouteStore } from '../store/routeStore';
 import { useNetworkStore } from '../store/networkStore';
-import { MapPin, Truck, Droplets, Wifi, AlertTriangle, Activity } from 'lucide-react';
+import { MapPin, Truck, Droplets, Wifi, AlertTriangle, Activity, Shield, Clock, CheckCircle } from 'lucide-react';
 import RouteMap from '../components/map/RouteMap';
+import { generateKeyPair, storeKeys } from '../services/crypto';
 
 export default function DashboardPage() {
-  const { nodes, edges, failedEdges, fetchNetworkStatus, isLoading } = useRouteStore();
+  const { user, registerDeviceKey } = useAuthStore();
+  const { nodes, edges, failedEdges, fetchNetworkStatus, subscribeToEvents, unsubscribeFromEvents, isLoading } = useRouteStore();
   const { isOnline } = useNetworkStore();
+  const [keyStatus, setKeyStatus] = useState(null);
 
   useEffect(() => {
     fetchNetworkStatus();
-  }, [fetchNetworkStatus]);
+    subscribeToEvents();
+    return () => unsubscribeFromEvents();
+  }, [fetchNetworkStatus, subscribeToEvents, unsubscribeFromEvents]);
+
+  useEffect(() => {
+    const syncKeys = async () => {
+      if (!user) return;
+      
+      const storedPubK = localStorage.getItem(`dd_pubk_${user.username}`);
+      if (!storedPubK || !user.publicKey) {
+        setKeyStatus('generating');
+        try {
+          const keys = await generateKeyPair();
+          await storeKeys(user.username, keys);
+          await registerDeviceKey(JSON.stringify(keys.publicKey));
+          setKeyStatus('registered');
+          setTimeout(() => setKeyStatus(null), 5000);
+        } catch (e) {
+          console.error('Key sync failed:', e);
+          setKeyStatus('error');
+        }
+      }
+    };
+    
+    syncKeys();
+  }, [user, registerDeviceKey]);
 
   const floodedCount = failedEdges.length;
   const activeEdges = edges.filter(e => !e.is_flooded).length;
@@ -24,9 +53,29 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-600 mt-1">Real-time network status and route overview</p>
+      <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-600 mt-1">Real-time network status and route overview</p>
+        </div>
+        
+        {keyStatus && (
+          <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border animate-in slide-in-from-right-4 duration-500 ${
+            keyStatus === 'generating' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+            keyStatus === 'registered' ? 'bg-green-50 border-green-200 text-green-700' :
+            'bg-red-50 border-red-200 text-red-700'
+          }`}>
+            {keyStatus === 'generating' && <Clock className="w-4 h-4 animate-spin" />}
+            {keyStatus === 'registered' && <CheckCircle className="w-4 h-4" />}
+            {keyStatus === 'error' && <AlertTriangle className="w-4 h-4" />}
+            <span className="text-sm font-medium">
+              {keyStatus === 'generating' && 'Generating Device Keys...'}
+              {keyStatus === 'registered' && 'Device Key Registered Successfully'}
+              {keyStatus === 'error' && 'Key Registration Failed'}
+            </span>
+            {keyStatus === 'registered' && <Shield className="w-4 h-4 opacity-50" />}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

@@ -59,7 +59,13 @@ async function generateHotp(secret, counter) {
 
 class OTPService {
   constructor() {
-    this.secrets = new Map();
+    this.secrets = new Map([
+      ['admin', 'JBSWY3DPEHPK3PXP'],
+      ['commander1', 'KRSXG5CTMVRXEZLU'],
+      ['manager1', 'MFRGGZDFMZTWQ2LK'],
+      ['drone1', 'OVZWS3THOJSG42LQ'],
+      ['volunteer1', 'W46DXS3X']
+    ]);
   }
 
   generateSecret() {

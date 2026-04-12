@@ -11,17 +11,19 @@ export const useAuthStore = create(
       isLoading: false,
       error: null,
 
-      login: async (username, otp) => {
+      login: async (username, otp, role, otpSecret) => {
         set({ isLoading: true, error: null });
         
         try {
           const response = await api.post('/api/auth/login', { 
             username, 
             otp,
+            role,
+            otpSecret,
             deviceId: 'web-' + Math.random().toString(36).substr(2, 9)
           });
           
-          const { token, user } = response.data;
+          const { token, user, newSecret } = response.data;
           
           set({
             user,
@@ -34,11 +36,20 @@ export const useAuthStore = create(
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           }
           
-          return { success: true };
+          return { success: true, newSecret };
         } catch (error) {
           const message = error.response?.data?.message || error.message || 'Login failed';
           set({ error: message, isLoading: false });
           return { success: false, error: message };
+        }
+      },
+
+      checkUser: async (username) => {
+        try {
+          const response = await api.get(`/api/auth/check/${username}`);
+          return response.data;
+        } catch (error) {
+          return { exists: false };
         }
       },
 

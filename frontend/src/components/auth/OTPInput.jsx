@@ -5,11 +5,19 @@ export default function OTPInput({ value, onChange, length = 6 }) {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const inputRefs = useRef([]);
 
+  // Sync external value changes (e.g. auto-fill button) into internal state
+  useEffect(() => {
+    if (value && typeof value === 'string') {
+      const digits = value.replace(/\D/g, '').slice(0, length).split('');
+      const newOtp = new Array(length).fill('');
+      digits.forEach((d, i) => { newOtp[i] = d; });
+      setOtp(newOtp);
+    }
+  }, [value, length]);
+
   useEffect(() => {
     const otpString = otp.join('');
-    if (otpString.length === length) {
-      onChange(otpString);
-    }
+    onChange(otpString);
   }, [otp, onChange, length]);
 
   useEffect(() => {

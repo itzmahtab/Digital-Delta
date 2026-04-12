@@ -23,6 +23,7 @@ const navigation = [
   { name: 'Deliveries', href: '/deliveries', icon: Package, roles: ['volunteer', 'manager', 'commander', 'admin'] },
   { name: 'Sync', href: '/sync', icon: RefreshCw, roles: ['admin'] },
   { name: 'Fleet', href: '/fleet', icon: Plane, roles: ['drone_operator', 'commander', 'admin'] },
+  { name: 'Mesh Network', href: '/mesh', icon: Wifi, roles: ['commander', 'admin'] },
   { name: 'Audit Log', href: '/audit', icon: FileText, roles: ['commander', 'admin'] },
   { name: 'Inventory', href: '/inventory', icon: Warehouse, roles: ['manager', 'commander', 'admin'] },
 ];
