@@ -11,7 +11,7 @@ export const useAuthStore = create(
       isLoading: false,
       error: null,
 
-      login: async (username, otp, role, otpSecret) => {
+      login: async (username, otp, role, otpSecret, demoBypass = false) => {
         set({ isLoading: true, error: null });
         
         try {
@@ -20,6 +20,7 @@ export const useAuthStore = create(
             otp,
             role,
             otpSecret,
+            demoBypass, // Emergency demo bypass for testing
             deviceId: 'web-' + Math.random().toString(36).substr(2, 9)
           });
           

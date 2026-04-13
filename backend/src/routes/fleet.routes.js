@@ -1,9 +1,13 @@
 import { Router } from 'express';
-import { getVehicles } from '../db.js';
+import { getVehicles, addAuditLog } from '../db.js';
+import { authenticateToken, requirePermission } from '../middleware/rbac.middleware.js';
 
 const router = Router();
 
-router.get('/', async (req, res) => {
+// All fleet routes require authentication
+router.use(authenticateToken);
+
+router.get('/', requirePermission('view_fleet'), async (req, res) => {
   try {
     const { type } = req.query;
     let allVehicles = await getVehicles();
@@ -18,7 +22,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/rendezvous', async (req, res) => {
+router.post('/rendezvous', requirePermission('update_fleet_status'), async (req, res) => {
   try {
     const { boat_id, drone_id } = req.body;
     const allVehicles = await getVehicles();
@@ -37,6 +41,12 @@ router.post('/rendezvous', async (req, res) => {
       boat_id,
       drone_id
     };
+
+    await addAuditLog(req.user.userId, 'RENDEZVOUS_PLANNED', 'success', { 
+      boat_id, 
+      drone_id, 
+      rendezvous_id: rendezvousPoint.id 
+    });
     
     res.json({ success: true, rendezvous_point: rendezvousPoint });
   } catch (err) {

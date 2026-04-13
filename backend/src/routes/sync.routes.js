@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { getLedgerDelta, appendLedgerMutation } from '../db.js';
+import { getLedgerDelta, appendLedgerMutation, addAuditLog } from '../db.js';
+import { authenticateToken, requirePermission } from '../middleware/rbac.middleware.js';
 
 const router = Router();
 
@@ -8,14 +9,17 @@ const serverVectorClock = {
   devices: {}
 };
 
-router.get('/vector-clock', (req, res) => {
+// All sync routes require authentication
+router.use(authenticateToken);
+
+router.get('/vector-clock', requirePermission('view_sync'), (req, res) => {
   res.json({
     success: true,
     vectorClock: serverVectorClock
   });
 });
 
-router.post('/delta', async (req, res) => {
+router.post('/delta', requirePermission('start_sync'), async (req, res) => {
   try {
     const { mutations = [], sinceVectorClock } = req.body;
     
@@ -40,6 +44,10 @@ router.post('/delta', async (req, res) => {
       }
     }
     
+    await addAuditLog(req.user.userId, 'SYNC_DELTA_POSTED', 'success', { 
+      mutation_count: acceptedMutations.length 
+    });
+    
     // Fetch all updates from the server that the client might be missing
     const serverDelta = await getLedgerDelta(sinceVectorClock);
     
@@ -54,7 +62,7 @@ router.post('/delta', async (req, res) => {
   }
 });
 
-router.post('/resolve-conflict', (req, res) => {
+router.post('/resolve-conflict', requirePermission('start_sync'), (req, res) => {
   // Logic moved to a simplified model for demo
   res.json({ success: true });
 });

@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDeliveries, createDelivery, updateDeliveryStatus, addAuditLog, getUserByUsername } from '../db.js';
+import { authenticateToken, requireRole, requirePermission } from '../middleware/rbac.middleware.js';
 
 const router = Router();
 
-router.get('/', async (req, res) => {
+// All delivery routes require authentication
+router.use(authenticateToken);
+
+router.get('/', requirePermission('view_deliveries'), async (req, res) => {
   try {
     const { status } = req.query;
     const items = await getDeliveries(status);
@@ -14,7 +18,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', requirePermission('create_delivery'), async (req, res) => {
   try {
     const { cargo, priority, from_node_id, to_node_id, sla_hours = 24 } = req.body;
     
@@ -35,17 +39,19 @@ router.post('/', async (req, res) => {
     };
 
     await createDelivery(newDelivery);
+    await addAuditLog(req.user.userId, 'DELIVERY_CREATED', 'success', { delivery_id: newDelivery.id });
     res.status(201).json({ success: true, delivery: newDelivery });
   } catch (err) {
     res.status(500).json({ error: 'DB_ERROR', message: err.message });
   }
 });
 
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', requirePermission('update_delivery'), async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
     await updateDeliveryStatus(id, status);
+    await addAuditLog(req.user.userId, 'DELIVERY_STATUS_UPDATED', 'success', { delivery_id: id, new_status: status });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'DB_ERROR', message: err.message });
@@ -54,7 +60,7 @@ router.patch('/:id/status', async (req, res) => {
 
 // The frontend handles PoD generation locally via QRGenerator.jsx
 // This endpoint is for system-initiated PoD generation if needed.
-router.post('/:id/pod/generate', async (req, res) => {
+router.post('/:id/pod/generate', requirePermission('view_deliveries'), async (req, res) => {
   const { id } = req.params;
   
   res.json({
@@ -69,13 +75,13 @@ router.post('/:id/pod/generate', async (req, res) => {
 });
 
 // Verify PoD on the backend (Final check)
-router.post('/:id/pod/verify', async (req, res) => {
+router.post('/:id/pod/verify', requirePermission('update_delivery'), async (req, res) => {
   const { id } = req.params;
   const { qrPayload } = req.body;
   
   try {
     await updateDeliveryStatus(id, 'delivered');
-    await addAuditLog('system', 'DELIVERY_POD_VERIFIED', 'success', { delivery_id: id });
+    await addAuditLog(req.user.userId, 'DELIVERY_POD_VERIFIED', 'success', { delivery_id: id });
     
     res.json({
       success: true,
