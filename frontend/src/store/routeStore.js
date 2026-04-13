@@ -99,13 +99,22 @@ export const useRouteStore = create((set, get) => {
         });
         const route = response.data.route;
         
+        // Check if truck route is flooded and suggest boat
+        let suggestion = null;
+        if (vehicleType === 'truck') {
+          const { suggestion: boatSuggestion, isFlooded } = await get().suggestBoatDispatch(from, to, route);
+          suggestion = boatSuggestion;
+          route.floodWarning = isFlooded;
+          route.boatSuggestion = boatSuggestion;
+        }
+        
         const { activeRoutes } = get();
         set({
           activeRoutes: [...activeRoutes.filter(r => r.id !== route.id), route],
           isLoading: false
         });
         
-        return { success: true, route };
+        return { success: true, route, suggestion };
       } catch (error) {
         set({ error: error.message, isLoading: false });
         return { success: false, error: error.message };
@@ -173,6 +182,43 @@ export const useRouteStore = create((set, get) => {
       if (risk.risk === 'high') return '#C0392B';
       if (risk.risk === 'medium') return '#F39C12';
       return '#1E8449';
+    },
+
+    checkRouteFlooded: (route) => {
+      if (!route || !route.edges) return false;
+      const { failedEdges } = get();
+      return route.edges.some(edge => failedEdges.includes(edge.id));
+    },
+
+    suggestBoatDispatch: async (from, to, truckRoute) => {
+      const isFlooded = get().checkRouteFlooded(truckRoute);
+      if (!isFlooded) {
+        return { suggestion: null, isFlooded: false };
+      }
+      
+      // Truck route is flooded, suggest boat as alternative
+      try {
+        const response = await api.get('/api/routes/compute', {
+          params: { from, to, vehicle: 'boat' }
+        });
+        return { 
+          suggestion: {
+            alternativeVehicle: 'boat',
+            alternativeRoute: response.data.route,
+            reason: 'truck_route_flooded'
+          },
+          isFlooded: true 
+        };
+      } catch (error) {
+        return { 
+          suggestion: {
+            alternativeVehicle: 'boat',
+            reason: 'truck_route_flooded',
+            error: error.message
+          },
+          isFlooded: true 
+        };
+      }
     },
   };
 });
