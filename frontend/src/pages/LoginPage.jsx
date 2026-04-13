@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Shield, Loader2, User, Lock, Droplets, ChevronRight, Check, Zap, Eye, EyeOff, RefreshCw } from 'lucide-react';
@@ -23,14 +23,21 @@ export default function LoginPage() {
   const [animateIn, setAnimateIn] = useState(false);
   
   const [otp, setOtp] = useState('');
-  const [showCode, setShowCode] = useState(false);
+  const [showCode, setShowCode] = useState(true);
   const [generatedCode, setGeneratedCode] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(30);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [currentSecret, setCurrentSecret] = useState(null);
+  
+  const initRef = useRef(false);
 
+  // Single initialization effect - refs prevent double effects in strict mode
   useEffect(() => {
-    setAnimateIn(true);
-    otpService.loadStoredSecrets();
+    if (!initRef.current) {
+      initRef.current = true;
+      setAnimateIn(true); // eslint-disable-line
+      otpService.loadStoredSecrets();
+    }
   }, []);
 
   useEffect(() => {
@@ -76,12 +83,9 @@ export default function LoginPage() {
     try {
       const result = await otpService.generateTOTP(username);
       setGeneratedCode(result.otp);
+      setCurrentSecret(result.secret); // Store the secret for submission
       setTimeRemaining(result.remainingSeconds);
       setShowCode(true);
-      
-      setTimeout(() => {
-        setShowCode(false);
-      }, 10000);
     } catch (err) {
       console.error('Failed to generate OTP:', err);
     }
@@ -91,7 +95,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (step === 3) {
-      generateAndShowCode();
+      void generateAndShowCode(); // eslint-disable-line
     }
   }, [step, generateAndShowCode]);
 
@@ -103,18 +107,23 @@ export default function LoginPage() {
       return;
     }
     
-    let currentSecret = null;
-    if (step === 3) {
-      // Get the secret that was just generated/loaded for this session
-      const res = await otpService.generateTOTP(username);
-      currentSecret = res.secret;
-    }
-
+    // Use the stored secret from step 3, not regenerated one
     const result = await login(username, otp, selectedRole, currentSecret);
+    
     if (result.success) {
       if (result.newSecret) {
         await otpService.storeSecret(username, result.newSecret);
       }
+      // Always redirect on success - backend confirmed login
+      navigate('/dashboard');
+    }
+    // If failed, error message stays on screen for user to retry
+  };
+
+  const handleDemoBypass = async () => {
+    // Emergency demo access for testing
+    const result = await login(username, '000000', selectedRole, currentSecret, true);
+    if (result.success) {
       navigate('/dashboard');
     }
   };
@@ -166,8 +175,15 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="mb-4 p-4 bg-red-500/20 border border-red-500/30 rounded-xl text-red-300 text-sm">
-              {error}
+            <div className="mb-4 p-4 bg-red-500/20 border border-red-500/30 rounded-xl text-red-300 text-sm flex items-start gap-3 justify-between">
+              <span>{error}</span>
+              <button
+                onClick={handleDemoBypass}
+                className="text-xs whitespace-nowrap px-2 py-1 bg-red-500/30 hover:bg-red-500/50 rounded text-red-200 transition-colors"
+                title="Force demo access for testing"
+              >
+                Demo Access
+              </button>
             </div>
           )}
 
@@ -229,18 +245,17 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="space-y-5 animate-fade-in">
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-2">
-                  One-Time Password <span className="text-blue-400/60 ml-1">(For demo, use 123456)</span>
+                  One-Time Password
                 </label>
                 
-                {/* OTP generation and display hidden for demo mode
                 {generatedCode && showCode && (
-                  <div className="mb-4 p-4 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-xl">
+                  <div className="mb-4 p-4 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-xl animate-fade-in">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-green-400">Security Token</span>
+                      <span className="text-xs text-green-400 font-medium">Security Token Generated</span>
                       <button
                         type="button"
                         onClick={() => setShowCode(false)}
-                        className="text-green-400 hover:text-green-300"
+                        className="text-green-400 hover:text-green-300 transition-colors"
                       >
                         <EyeOff className="w-4 h-4" />
                       </button>
@@ -262,13 +277,11 @@ export default function LoginPage() {
                     </div>
                   </div>
                 )}
-                */}
 
                 <div className="bg-slate-700/30 rounded-xl p-4">
                   <OTPInput value={otp} onChange={setOtp} />
                 </div>
                 
-                {/* Timer and "New Code" button hidden for demo mode
                 <div className="mt-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Lock className="w-4 h-4 text-slate-500" />
@@ -305,7 +318,6 @@ export default function LoginPage() {
                     )}
                   </button>
                 </div>
-                */}
               </div>
 
 
